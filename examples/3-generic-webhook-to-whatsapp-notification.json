@@ -1,0 +1,73 @@
+{
+  "name": "Example 3 - Generic inbound webhook -> WhatsApp notification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generic-alert",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "c3c3c3c3-0001-4000-8000-000000000001",
+      "name": "Generic Inbound Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-280, 0],
+      "webhookId": "example-3-generic-webhook",
+      "notes": "Point any third-party service's outgoing webhook at this URL: a monitoring tool, a payment processor, Stripe, an uptime checker, a Zapier/Make relay, etc. This pattern also doubles as the practical way to react to Wasaas's own inbound-message endpoint today: have the gateway/worker that calls Wasaas's POST /api/v1/incoming also forward a copy here, since Wasaas itself does not yet dispatch outbound webhooks (see WasaasTrigger node notice and docs/WEBHOOK-STATUS.md)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1",
+              "name": "summary",
+              "type": "string",
+              "value": "={{ $json.body.message || $json.body.summary || JSON.stringify($json.body).slice(0, 300) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c3c3c3c3-0002-4000-8000-000000000002",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-40, 0]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendText",
+        "sessionId": "customer-5-1",
+        "to": "966500000000",
+        "message": "=🚨 Alert received:\n{{ $json.summary }}"
+      },
+      "id": "c3c3c3c3-0003-4000-8000-000000000003",
+      "name": "Notify Ops via WhatsApp",
+      "type": "n8n-nodes-wasaas.wasaas",
+      "typeVersion": 1,
+      "position": [200, 0],
+      "credentials": {
+        "wasaasApi": {
+          "id": "1",
+          "name": "Wasaas API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Generic Inbound Webhook": {
+      "main": [[{ "node": "Build Summary", "type": "main", "index": 0 }]]
+    },
+    "Build Summary": {
+      "main": [[{ "node": "Notify Ops via WhatsApp", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Generic pattern: any system that can fire an outgoing webhook (monitoring, payments, forms, another automation tool) hits this n8n webhook, and a WhatsApp notification goes to a fixed ops number via Wasaas. Verified by static review only (no live n8n instance in this environment)."
+  }
+}

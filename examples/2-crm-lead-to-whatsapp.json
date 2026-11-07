@@ -1,0 +1,142 @@
+{
+  "name": "Example 2 - CRM new-lead webhook -> WhatsApp to lead",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-new-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b2b2b2b2-0001-4000-8000-000000000001",
+      "name": "CRM New Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-320, 0],
+      "webhookId": "example-2-crm-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "leadName",
+              "type": "string",
+              "value": "={{ $json.body.name }}"
+            },
+            {
+              "id": "c2",
+              "name": "leadPhone",
+              "type": "string",
+              "value": "={{ $json.body.phone.replace(/[^0-9]/g, '') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2b2b2b2-0002-4000-8000-000000000002",
+      "name": "Normalise Lead Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-100, 0],
+      "notes": "CRM payloads vary; normalise the phone number here (strip +, spaces, dashes) to match Wasaas's required digits-only format before sending."
+    },
+    {
+      "parameters": {
+        "resource": "session",
+        "operation": "validateNumber",
+        "sessionId": "customer-5-1",
+        "phone": "={{ $json.leadPhone }}"
+      },
+      "id": "b2b2b2b2-0003-4000-8000-000000000003",
+      "name": "Validate Number",
+      "type": "n8n-nodes-wasaas.wasaas",
+      "typeVersion": 1,
+      "position": [140, 0],
+      "credentials": {
+        "wasaasApi": {
+          "id": "1",
+          "name": "Wasaas API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_whatsapp }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2b2b2b2-0004-4000-8000-000000000004",
+      "name": "Has WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [380, 0]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendText",
+        "sessionId": "customer-5-1",
+        "to": "={{ $('Normalise Lead Fields').item.json.leadPhone }}",
+        "message": "=Hi {{ $('Normalise Lead Fields').item.json.leadName }}, thanks for your interest! A member of our team will reach out shortly."
+      },
+      "id": "b2b2b2b2-0005-4000-8000-000000000005",
+      "name": "Send WhatsApp to Lead",
+      "type": "n8n-nodes-wasaas.wasaas",
+      "typeVersion": 1,
+      "position": [620, -80],
+      "credentials": {
+        "wasaasApi": {
+          "id": "1",
+          "name": "Wasaas API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"received\": true, \"whatsapp_sent\": $json.has_whatsapp === true } }}"
+      },
+      "id": "b2b2b2b2-0006-4000-8000-000000000006",
+      "name": "Respond to CRM",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [860, 0]
+    }
+  ],
+  "connections": {
+    "CRM New Lead Webhook": {
+      "main": [[{ "node": "Normalise Lead Fields", "type": "main", "index": 0 }]]
+    },
+    "Normalise Lead Fields": {
+      "main": [[{ "node": "Validate Number", "type": "main", "index": 0 }]]
+    },
+    "Validate Number": {
+      "main": [[{ "node": "Has WhatsApp?", "type": "main", "index": 0 }]]
+    },
+    "Has WhatsApp?": {
+      "main": [
+        [{ "node": "Send WhatsApp to Lead", "type": "main", "index": 0 }],
+        [{ "node": "Respond to CRM", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send WhatsApp to Lead": {
+      "main": [[{ "node": "Respond to CRM", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "A CRM (HubSpot/Pipedrive/etc. via its own outgoing-webhook feature) posts new-lead data to this n8n webhook. The lead's number is normalised and checked with Wasaas's real /check-number endpoint (Validate Number action) before sending, so invalid numbers don't burn message quota. Verified by static review only (no live n8n instance in this environment)."
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "name": "Example 1 - Form submission -> WhatsApp confirmation",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Book a Demo",
+        "formDescription": "Tell us how to reach you and we'll confirm over WhatsApp.",
+        "formFields": {
+          "values": [
+            { "fieldLabel": "Full Name", "requiredField": true },
+            {
+              "fieldLabel": "WhatsApp Number (with country code, digits only)",
+              "placeholder": "966501234567",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1a1a1a1-0001-4000-8000-000000000001",
+      "name": "On Form Submission",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [-120, 0],
+      "webhookId": "example-1-form-trigger"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendText",
+        "sessionId": "customer-5-1",
+        "to": "={{ $json['WhatsApp Number (with country code, digits only)'] }}",
+        "message": "=Hi {{ $json['Full Name'] }}, thanks for booking a demo! We'll be in touch shortly to confirm the time."
+      },
+      "id": "a1a1a1a1-0002-4000-8000-000000000002",
+      "name": "Send WhatsApp Confirmation",
+      "type": "n8n-nodes-wasaas.wasaas",
+      "typeVersion": 1,
+      "position": [120, 0],
+      "credentials": {
+        "wasaasApi": {
+          "id": "1",
+          "name": "Wasaas API"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "exists", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1a1a1a1-0003-4000-8000-000000000003",
+      "name": "Send Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [360, 0]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendText",
+        "sessionId": "customer-5-1",
+        "to": "966500000000",
+        "message": "=Demo-booking WhatsApp confirmation failed for {{ $('On Form Submission').item.json['Full Name'] }}: {{ $json.error }}"
+      },
+      "id": "a1a1a1a1-0004-4000-8000-000000000004",
+      "name": "Alert Ops Team",
+      "type": "n8n-nodes-wasaas.wasaas",
+      "typeVersion": 1,
+      "position": [600, -80],
+      "credentials": {
+        "wasaasApi": {
+          "id": "1",
+          "name": "Wasaas API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "On Form Submission": {
+      "main": [[{ "node": "Send WhatsApp Confirmation", "type": "main", "index": 0 }]]
+    },
+    "Send WhatsApp Confirmation": {
+      "main": [[{ "node": "Send Failed?", "type": "main", "index": 0 }]]
+    },
+    "Send Failed?": {
+      "main": [
+        [{ "node": "Alert Ops Team", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Form submission collects a lead's WhatsApp number, then Wasaas sends a text confirmation. If the send fails (quota/auth/invalid number), an internal ops number is notified instead of failing silently. Verified by static review only (no live n8n instance in this environment)."
+  }
+}
