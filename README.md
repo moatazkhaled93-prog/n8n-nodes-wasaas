@@ -1,12 +1,12 @@
 # n8n-nodes-wasaas
 
-An [n8n](https://n8n.io) community node package for [Wasaas](https://wasaas.org) — an unofficial, session-based WhatsApp API. Send text/image/document/bulk WhatsApp messages, validate phone numbers and check session status from any n8n workflow.
+An [n8n](https://n8n.io) community node package for [Wasaas](https://wasaas.org) — an unofficial, session-based WhatsApp API. Send text/image/document/bulk WhatsApp messages, validate phone numbers, check session status, and react to real Wasaas webhooks (signed, live in production) from any n8n workflow.
 
-> **Status: BUILT, NOT YET PUBLISHED.** This package has not been published to npm and has not gone through n8n's community-node verification. See [Publishing](#publishing-not-yet-done) for exactly what's left.
+> **Status: BUILT, NOT YET PUBLISHED TO NPM.** The package is 100% ready to publish — build, lint and `npm pack` all pass clean — but publishing is blocked on the maintainer's own `npm login`. See [Publishing](#publishing-not-yet-done).
 
 ## What this is built against
 
-This node talks to Wasaas's real, existing public API (`https://wasaas.org/api/v1`), verified directly against the `moatazkhaled93-prog/whatsapp-saas` source (`src/app/api/v1/**/route.ts`, `public/openapi.json`) — nothing here is a guessed or invented endpoint shape.
+This node talks to Wasaas's real, existing public API (`https://wasaas.org/api/v1`), verified directly against the `moatazkhaled93-prog/whatsapp-saas` source and `public/openapi.json`, and against the live webhook docs at [wasaas.org/docs#webhooks](https://wasaas.org/docs#webhooks) — nothing here is a guessed or invented shape.
 
 | Node action | Wasaas endpoint | Notes |
 |---|---|---|
@@ -17,17 +17,11 @@ This node talks to Wasaas's real, existing public API (`https://wasaas.org/api/v
 | Session → List Sessions | `GET /sessions` | |
 | Session → Check Session Status | `GET /sessions` (filtered client-side) | Wasaas has **no** single-session status endpoint on the public API — this operation lists all sessions and matches on Session ID locally |
 | Session → Validate Number | `POST /check-number` | Real endpoint — "has_whatsapp" check |
-| Wasaas Trigger (webhook) | n8n webhook, Wasaas-shaped payload | **Not live yet — see below** |
+| Wasaas Trigger (webhook) | Real signed webhook delivery | **Live in production** — see below |
 
-### Important: Wasaas does not deliver webhooks yet
+### Webhooks are live
 
-Wasaas's dashboard lets a customer register a webhook (`name`, `url`, `events`), but as of this build, **no dispatcher exists** to actually call that URL. This was verified directly in the app source:
-
-- `src/lib/webhooks-disabled.ts`: `WEBHOOK_DELIVERY_IMPLEMENTED = false`
-- `docs/WEBHOOK-STATUS.md`: *"No component sends an event to a customer endpoint... No webhook dispatcher currently exists."*
-- `POST /api/webhooks` and `PUT /api/webhooks/[id]` return `501 webhook_delivery_unavailable`
-
-So the **Wasaas Trigger** node included here is built against the documented event envelope (`{ event, timestamp, data }`, events `message.sent` / `message.failed` / `session.connected` / `session.disconnected` / `session.qr_ready`) so workflows built on it keep working the day Wasaas ships real delivery — but **it will not receive anything from Wasaas on its own today**. The node's canvas subtitle and an in-node Notice both say this explicitly. Until then, use it to receive relayed/forwarded payloads shaped the same way (see Example 3).
+Wasaas ships real, signed outbound webhook delivery: three event types (`message.received`, `message.status`, `session.status_changed`), Stripe-style `X-Wasaas-Signature: t=<unix>,v1=<hmac>` signing, SSRF-protected URLs, retries with backoff, and a delivery log in the dashboard. The **Wasaas Trigger** node included here verifies that signature (HMAC-SHA256 over the raw body, constant-time compare, 5-minute replay window) when you paste in the webhook's signing secret, and emits the real envelope (`{ id, type, created_at, data }`) to the rest of your workflow. See [Credentials setup](#credentials-setup) and [Webhooks](#webhooks) below.
 
 ## Installation
 
@@ -41,16 +35,77 @@ Or in a self-hosted n8n instance: **Settings → Community Nodes → Install**, 
 
 For local development against this repo before publishing, `npm link` it into your n8n custom-nodes directory, or copy `dist/` into `~/.n8n/custom/`.
 
-## Credentials setup
+## Credentials setup (Auth)
 
-1. Log into your Wasaas dashboard at `https://wasaas.org`.
+1. Sign up at [wasaas.org](https://wasaas.org/register) — [7-day free trial, no card](https://wasaas.org?ref=github-n8n-nodes-wasaas).
 2. Go to **API Keys** and click **Create API Key**. Copy the key — it starts with `wsa_` and is shown only once.
 3. In n8n, create a new credential of type **Wasaas API**:
    - **API Key**: paste the `wsa_...` key.
    - **Base URL**: leave as `https://wasaas.org/api/v1` unless you run a self-hosted/white-labelled instance.
 4. Click **Test**. This calls `GET /sessions` (a free, read-only call) — a green check confirms the key is valid and active.
 
-Every WhatsApp action also needs a **Session ID** (e.g. `customer-5-1`). Get it from the **Session → List Sessions** operation, or from the Wasaas dashboard's Sessions page. A session must be in `connected` status for sends to succeed.
+## Connect a WhatsApp number
+
+Go to **Sessions → Add Session** in the Wasaas dashboard and scan the QR code with the WhatsApp number you want to send/receive from. Every action also needs this **Session ID** (e.g. `customer-5-1`) — get it from the **Session → List Sessions** operation, or from the dashboard's Sessions page. A session must be in `connected` status for sends to succeed.
+
+## Your first message
+
+Add a **Wasaas** node, pick **Resource: Message → Operation: Send Text**, and fill in:
+
+| Field | Value |
+|---|---|
+| Session ID | `customer-5-1` |
+| To | `966501234567` |
+| Message | `Hello from Wasaas! 👋` |
+
+This is equivalent to the node internally calling:
+
+```bash
+curl -X POST https://wasaas.org/api/v1/messages \
+  -H "Authorization: Bearer wsa_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{ "session_id": "customer-5-1", "to": "966501234567", "message": "Hello from Wasaas!" }'
+# { "success": true, "to": "966501234567", "status": "sent" }
+```
+
+## Webhooks
+
+Add a **Wasaas Trigger** node, activate the workflow to get its Production URL, then register that URL in the Wasaas dashboard under **Customer → Webhooks**. Wasaas immediately sends a one-time `endpoint.verification` ping (the node acknowledges it automatically) and shows you a signing secret **once** — paste it into the node's **Webhook Signing Secret** field so every delivery is verified before your workflow runs:
+
+```ts
+// What the node does under the hood (nodes/WasaasTrigger/WasaasTrigger.node.ts)
+import { createHmac, timingSafeEqual } from 'crypto';
+
+function verifyWasaasSignature(secret: string, rawBody: string, header: string, toleranceSeconds = 300): boolean {
+  const parts = Object.fromEntries(header.split(',').map((kv) => kv.split('=')));
+  const t = Number(parts.t);
+  if (!t || Math.abs(Date.now() / 1000 - t) > toleranceSeconds) return false;
+
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  const a = Buffer.from(expected, 'hex');
+  const b = Buffer.from(parts.v1 || '', 'hex');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+```
+
+Each delivery's `data` arrives in the node's output exactly as sent, inside the real envelope:
+
+```json
+{
+  "id": "3f2a2e9e-...-unique-per-event",
+  "type": "message.status",
+  "created_at": "2026-11-08T12:00:00.000Z",
+  "data": { "session_id": "customer-5-1", "to": "966501234567", "status": "sent" }
+}
+```
+
+Use `id` as your idempotency key — Wasaas retries a failed delivery up to 5 times with backoff, and the same `id` is reused on every retry of the same event. Use the node's **Event Filter** to only run the workflow for specific event types.
+
+## Get started
+
+**[Free 7-day trial, no card required →](https://wasaas.org?ref=github-n8n-nodes-wasaas)**
+
+Full API reference, rate limits, error codes and the webhook spec: **[wasaas.org/docs](https://wasaas.org/docs)**
 
 ## Error handling
 
@@ -69,24 +124,23 @@ All three live in [`examples/`](./examples) as importable n8n workflow JSON (**W
 
 1. **[Form submission → WhatsApp confirmation](./examples/1-form-to-whatsapp-confirmation.json)** — n8n Form Trigger collects a name + WhatsApp number, sends a text confirmation, and alerts an ops number on failure.
 2. **[CRM new-lead webhook → WhatsApp to lead](./examples/2-crm-lead-to-whatsapp.json)** — a CRM's outgoing webhook posts a new lead, the number is normalised and validated with `check-number` before sending, and the CRM gets a JSON response back.
-3. **[Generic inbound webhook → WhatsApp notification](./examples/3-generic-webhook-to-whatsapp-notification.json)** — any third-party webhook (monitoring, payments, another automation tool) triggers a WhatsApp alert to a fixed number. This pattern is also today's practical substitute for the not-yet-live Wasaas Trigger.
+3. **[Generic inbound webhook → WhatsApp notification](./examples/3-generic-webhook-to-whatsapp-notification.json)** — any third-party webhook (monitoring, payments, another automation tool) triggers a WhatsApp alert to a fixed number. For a webhook coming from Wasaas itself, use the **Wasaas Trigger** node instead (see [Webhooks](#webhooks) above).
 
 ## Screenshots
 
 No GUI environment was available to render n8n and capture real screenshots in this session, so the node layout is described instead:
 
 - **Wasaas node**: two top-level dropdowns, **Resource** (`Message` / `Session`) and **Operation**, which changes the fields below it — e.g. picking `Message → Send Text` shows Session ID, To, Message; picking `Session → Validate Number` shows Session ID and Phone Number.
-- **Wasaas Trigger node**: a single webhook-style trigger node with a yellow Notice box at the top reading "Heads up: Wasaas does not currently deliver webhook events..." and an Event Filter multi-select below it.
+- **Wasaas Trigger node**: a single webhook-style trigger node with a Notice box at the top explaining how to register its Production URL in the Wasaas dashboard, a **Webhook Signing Secret** field, and an Event Filter multi-select below it.
 - **Credential dialog**: two fields, API Key (masked) and Base URL (pre-filled), with a Test button.
 
 ## Publishing (not yet done)
 
-This package has been built, type-checked (`tsc --noEmit`), compiled (`npm run build`), and linted against n8n's own community-node ESLint rules (`eslint-plugin-n8n-nodes-base`) with zero errors — but **not published**. To finish:
+This package has been built, type-checked (`tsc --noEmit`), compiled (`npm run build`), linted against n8n's own community-node ESLint rules (`eslint-plugin-n8n-nodes-base`) with zero errors, and `npm pack --dry-run` produces a clean 17-file tarball — but **not published**. The one remaining blocker is `npm login`:
 
-1. `npm login` with the Wasaas/maintainer's own npm account.
-2. `npm publish` from this directory (after bumping the version past `0.1.0` if needed).
-3. Submit the package for n8n's [community node verification](https://docs.n8n.io/integrations/community-nodes/) if "verified" status is wanted (optional — unverified community nodes are still installable).
-4. Push this repo to its final GitHub location (currently a local, unpushed repo — see the hand-off notes for where).
+1. `npm login` with the Wasaas/maintainer's own npm account (this environment has no working npm session — `npm whoami` returns 401 — and will not attempt a login workaround).
+2. `npm publish` from this directory (version `0.1.0` is a valid first release).
+3. If "verified" community-node status is wanted (optional — unverified nodes are still installable), submit via n8n's [community node verification](https://docs.n8n.io/integrations/community-nodes/). Note: n8n requires packages submitted for verification after May 1, 2026 to be published from a GitHub Action with npm provenance, not a local `npm publish` — a publish workflow would need to be added for that step specifically.
 
 Nothing in this README or `package.json` claims "official n8n node" status, and it should stay that way until step 3 is actually completed and confirmed by n8n.
 
