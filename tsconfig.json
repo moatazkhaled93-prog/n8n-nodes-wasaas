@@ -15,7 +15,8 @@
     "outDir": "./dist",
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "incremental": true
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuildinfo"
   },
   "include": ["credentials/**/*", "nodes/**/*"],
   "exclude": ["dist/**/*", "node_modules/**/*", "examples/**/*"]
