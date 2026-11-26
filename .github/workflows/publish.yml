@@ -1,0 +1,53 @@
+name: Publish to npm (with provenance)
+
+# n8n's community-node verification process (since 2026-05-01) only accepts
+# packages published from a GitHub Actions run with a signed npm provenance
+# statement. A local `npm publish` from a laptop cannot produce that, which is
+# why n8n-nodes-wasaas@0.1.0 (published locally) is unverifiable as-is.
+#
+# This workflow publishes a *new* version with --provenance, which requires
+# either:
+#   - an NPM_TOKEN repo secret with publish rights to n8n-nodes-wasaas, or
+#   - npm "trusted publisher" (OIDC) configured for this repo+workflow on
+#     npmjs.com, in which case NPM_TOKEN can be omitted entirely.
+# Neither is configured yet as of 2026-11-27 — this workflow is prepared but
+# will fail at the publish step until one of the two is set up.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for npm provenance (OIDC)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
