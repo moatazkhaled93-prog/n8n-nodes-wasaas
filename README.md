@@ -2,7 +2,7 @@
 
 An [n8n](https://n8n.io) community node package for [Wasaas](https://wasaas.org) — an unofficial, session-based WhatsApp API. Send text/image/document/bulk WhatsApp messages, validate phone numbers, check session status, and react to real Wasaas webhooks (signed, live in production) from any n8n workflow.
 
-> **Status: BUILT, NOT YET PUBLISHED TO NPM.** The package is 100% ready to publish — build, lint and `npm pack` all pass clean — but publishing is blocked on the maintainer's own `npm login`. See [Publishing](#publishing-not-yet-done).
+> **Status: published to npm as `n8n-nodes-wasaas@0.1.0`.** Installable today via `npm install n8n-nodes-wasaas` or n8n's Community Nodes installer. It is **not yet listed in n8n's official verified community-nodes directory** — that submission is pending, and is itself blocked on a separate requirement (see [Verification](#verification-pending)).
 
 ## What this is built against
 
@@ -24,8 +24,6 @@ This node talks to Wasaas's real, existing public API (`https://wasaas.org/api/v
 Wasaas ships real, signed outbound webhook delivery: three event types (`message.received`, `message.status`, `session.status_changed`), Stripe-style `X-Wasaas-Signature: t=<unix>,v1=<hmac>` signing, SSRF-protected URLs, retries with backoff, and a delivery log in the dashboard. The **Wasaas Trigger** node included here verifies that signature (HMAC-SHA256 over the raw body, constant-time compare, 5-minute replay window) when you paste in the webhook's signing secret, and emits the real envelope (`{ id, type, created_at, data }`) to the rest of your workflow. See [Credentials setup](#credentials-setup) and [Webhooks](#webhooks) below.
 
 ## Installation
-
-Not yet on npm — see [Publishing](#publishing-not-yet-done). Once published:
 
 ```bash
 npm install n8n-nodes-wasaas
@@ -134,15 +132,13 @@ No GUI environment was available to render n8n and capture real screenshots in t
 - **Wasaas Trigger node**: a single webhook-style trigger node with a Notice box at the top explaining how to register its Production URL in the Wasaas dashboard, a **Webhook Signing Secret** field, and an Event Filter multi-select below it.
 - **Credential dialog**: two fields, API Key (masked) and Base URL (pre-filled), with a Test button.
 
-## Publishing (not yet done)
+## Verification (pending)
 
-This package has been built, type-checked (`tsc --noEmit`), compiled (`npm run build`), linted against n8n's own community-node ESLint rules (`eslint-plugin-n8n-nodes-base`) with zero errors, and `npm pack --dry-run` produces a clean 17-file tarball — but **not published**. The one remaining blocker is `npm login`:
+`n8n-nodes-wasaas@0.1.0` is published and installable, but not yet submitted for n8n's official "verified community node" badge (unverified nodes are still fully installable and usable — verification only adds in-editor discoverability and the checkmark). A creator-portal account has been registered for submission; actually submitting is blocked on one real gap:
 
-1. `npm login` with the Wasaas/maintainer's own npm account (this environment has no working npm session — `npm whoami` returns 401 — and will not attempt a login workaround).
-2. `npm publish` from this directory (version `0.1.0` is a valid first release).
-3. If "verified" community-node status is wanted (optional — unverified nodes are still installable), submit via n8n's [community node verification](https://docs.n8n.io/integrations/community-nodes/). Note: n8n requires packages submitted for verification after May 1, 2026 to be published from a GitHub Action with npm provenance, not a local `npm publish` — a publish workflow would need to be added for that step specifically.
+- n8n requires packages submitted for verification (as of May 1, 2026) to be published from a GitHub Action with npm provenance, not a local `npm publish` — see [npm's provenance docs](https://docs.npmjs.com/generating-provenance-statements). `0.1.0` was published directly (`npm whoami` / local session), so it does **not** carry a provenance attestation (`npm view n8n-nodes-wasaas` shows no `dist.attestations`). A future release published via a GitHub Actions workflow with `id-token: write` and `npm publish --provenance` would satisfy this for the next version.
 
-Nothing in this README or `package.json` claims "official n8n node" status, and it should stay that way until step 3 is actually completed and confirmed by n8n.
+Nothing in this README or `package.json` claims "official n8n node" / verified status, and it should stay that way until verification is actually completed and confirmed by n8n.
 
 ## License
 
